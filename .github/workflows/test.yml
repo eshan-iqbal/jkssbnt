@@ -1,0 +1,57 @@
+name: Test Notification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+    
+    - name: Send Test Notification
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        python -c "
+        import requests
+        import os
+        
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        chat_id = os.getenv('TELEGRAM_CHAT_ID')
+        
+        message = '''🎉 <b>GitHub Actions Test - SUCCESS!</b>
+        
+        ✅ Your JKSSB Monitor is running in the cloud!
+        
+        📅 Schedule: 9 AM and 9 PM IST daily
+        🤖 Bot: Working perfectly
+        ☁️ Cloud: GitHub Actions
+        💰 Cost: FREE
+        
+        <i>You will receive notifications when new JKSSB updates appear!</i>'''
+        
+        url = f'https://api.telegram.org/bot{bot_token}/sendMessage'
+        payload = {
+            'chat_id': chat_id,
+            'text': message,
+            'parse_mode': 'HTML'
+        }
+        
+        response = requests.post(url, data=payload)
+        print(f'Status: {response.status_code}')
+        print(f'Response: {response.text}')
+        "
