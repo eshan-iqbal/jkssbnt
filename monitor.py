@@ -76,74 +76,92 @@ class JKSSBMonitor:
     
     def fetch_notifications(self) -> List[Dict[str, str]]:
         """
-        Fetch current notifications from JKSSB website
+        Fetch current notifications from JKSSB website with retry logic
         
         Returns:
             List of notification dictionaries with 'title', 'date', and 'link'
         """
-        try:
-            logger.info(f"Fetching notifications from {self.url}")
-            
-            # Add headers to mimic a browser
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            
-            response = requests.get(self.url, timeout=20, headers=headers)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            notifications = []
-            
-            # Find all notification links with class 'linkText'
-            link_elements = soup.find_all('a', class_='linkText')
-            
-            if not link_elements:
-                logger.warning("Could not find notification links on page")
+        max_retries = 3
+        retry_delays = [5, 10, 15]  # seconds to wait between retries
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    logger.info(f"Retry attempt {attempt + 1}/{max_retries}")
+                    time.sleep(retry_delays[attempt - 1])
+                
+                logger.info(f"Fetching notifications from {self.url}")
+                
+                # Add headers to mimic a browser
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+                
+                # Increase timeout on retries
+                timeout = 20 + (attempt * 10)
+                response = requests.get(self.url, timeout=timeout, headers=headers)
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.text, 'html.parser')
+                notifications = []
+                
+                # Find all notification links with class 'linkText'
+                link_elements = soup.find_all('a', class_='linkText')
+                
+                if not link_elements:
+                    logger.warning("Could not find notification links on page")
+                    return []
+                
+                for link_tag in link_elements:
+                    # Extract title
+                    title = link_tag.text.strip()
+                    
+                    # Extract link
+                    href = link_tag.get('href', '')
+                    link = ""
+                    if href:
+                        # Make absolute URL if relative
+                        if href.startswith('http'):
+                            link = href
+                        else:
+                            base_url = "https://jkssb.nic.in/"
+                            link = base_url + href.lstrip('../').lstrip('/')
+                    
+                    # Extract date from PDF filename (format: _DDMMYYYY.pdf)
+                    date = ""
+                    if href:
+                        import re
+                        # Look for date pattern in filename: _DDMMYYYY.pdf
+                        date_match = re.search(r'_(\d{2})(\d{2})(\d{4})\.pdf', href)
+                        if date_match:
+                            day, month, year = date_match.groups()
+                            date = f"{day}-{month}-{year}"
+                    
+                    if title:  # Only add if we have a title
+                        notifications.append({
+                            'title': title,
+                            'date': date,
+                            'link': link,
+                            'fetched_at': datetime.now().isoformat()
+                        })
+                
+                logger.info(f"Successfully fetched {len(notifications)} notifications")
+                return notifications
+                
+            except requests.Timeout as e:
+                logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt == max_retries - 1:
+                    logger.error(f"Failed after {max_retries} attempts due to timeout")
+                    return []
+            except requests.RequestException as e:
+                logger.error(f"Error fetching notifications: {e}")
+                if attempt == max_retries - 1:
+                    return []
+            except Exception as e:
+                logger.error(f"Unexpected error while fetching notifications: {e}")
                 return []
-            
-            for link_tag in link_elements:
-                # Extract title
-                title = link_tag.text.strip()
-                
-                # Extract link
-                href = link_tag.get('href', '')
-                link = ""
-                if href:
-                    # Make absolute URL if relative
-                    if href.startswith('http'):
-                        link = href
-                    else:
-                        base_url = "https://jkssb.nic.in/"
-                        link = base_url + href.lstrip('../').lstrip('/')
-                
-                # Extract date from PDF filename (format: _DDMMYYYY.pdf)
-                date = ""
-                if href:
-                    import re
-                    # Look for date pattern in filename: _DDMMYYYY.pdf
-                    date_match = re.search(r'_(\d{2})(\d{2})(\d{4})\.pdf', href)
-                    if date_match:
-                        day, month, year = date_match.groups()
-                        date = f"{day}-{month}-{year}"
-                
-                if title:  # Only add if we have a title
-                    notifications.append({
-                        'title': title,
-                        'date': date,
-                        'link': link,
-                        'fetched_at': datetime.now().isoformat()
-                    })
-            
-            logger.info(f"Successfully fetched {len(notifications)} notifications")
-            return notifications
-            
-        except requests.RequestException as e:
-            logger.error(f"Error fetching notifications: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Unexpected error while fetching notifications: {e}")
-            return []
+        
+        return []
     
     def load_old_notifications(self) -> List[Dict[str, str]]:
         """Load previously saved notifications from file"""
