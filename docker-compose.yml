@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  jkssb-monitor:
+    build: .
+    container_name: jkssb-monitor
+    restart: unless-stopped
+    env_file:
+      - config.env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - CONTINUOUS_MODE=true
+      - CHECK_INTERVAL=1800
